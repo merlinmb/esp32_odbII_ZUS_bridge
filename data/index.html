@@ -191,7 +191,7 @@ function fetchStatus() {
 
 function loadDisplayInterval(ms) {
   var el = document.getElementById('inp-disp-ms');
-  if (el && ms) el.value = ms;
+  if (el && ms != null) el.value = ms;
 }
 
 function updatePill(id, ok, okLabel, errLabel) {
