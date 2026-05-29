@@ -1,0 +1,260 @@
+<h2>OLED Frame Layouts — 128×64 px (SH1106)</h2>
+<p class="subtitle">Three frames rotating on a configurable interval. Click a frame to select it.</p>
+
+<style>
+  .frames-row {
+    display: flex;
+    gap: 28px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 24px 0;
+  }
+
+  .frame-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    padding: 12px;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    transition: border-color 0.2s;
+  }
+
+  .frame-wrap:hover {
+    border-color: #555;
+  }
+
+  .frame-wrap.selected {
+    border-color: #4a86e8;
+    background: rgba(74, 134, 232, 0.08);
+  }
+
+  .frame-label {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #aaa;
+  }
+
+  /* OLED screen simulation */
+  .oled {
+    width: 256px;
+    height: 128px;
+    background: #0a0a0a;
+    border: 3px solid #2a2a2a;
+    border-radius: 6px;
+    box-shadow: 0 0 12px rgba(0, 200, 100, 0.08), inset 0 0 8px rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+    color: #e8ffe0;
+    position: relative;
+  }
+
+  .oled-inner {
+    padding: 6px 8px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* Typography scaled 2x from real 128x64 */
+  .oled .title-bar {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #7fc;
+    border-bottom: 1px solid #2a3a2a;
+    padding-bottom: 3px;
+    margin-bottom: 4px;
+  }
+
+  .oled .grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 8px;
+    flex: 1;
+  }
+
+  .oled .cell {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .oled .cell-label {
+    font-size: 7px;
+    color: #5a9a5a;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .oled .cell-value {
+    font-size: 18px;
+    line-height: 1.1;
+    font-weight: bold;
+    color: #e8ffe0;
+    text-shadow: 0 0 6px rgba(180, 255, 160, 0.4);
+  }
+
+  .oled .cell-unit {
+    font-size: 7px;
+    color: #7ab87a;
+    margin-top: -2px;
+  }
+
+  /* Connectivity frame */
+  .oled .conn-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+    border-bottom: 1px solid #1a2a1a;
+  }
+
+  .oled .conn-row:last-child {
+    border-bottom: none;
+  }
+
+  .oled .conn-name {
+    font-size: 9px;
+    width: 36px;
+    color: #7fc;
+    letter-spacing: 1px;
+  }
+
+  .oled .dot-on {
+    color: #4fff80;
+    font-size: 10px;
+  }
+
+  .oled .dot-off {
+    color: #553;
+    font-size: 10px;
+  }
+
+  .oled .conn-detail {
+    font-size: 8px;
+    color: #bde;
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .oled .conn-detail.ip {
+    font-size: 7.5px;
+    color: #9bc;
+  }
+
+  /* Scanline overlay for CRT feel */
+  .oled::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(to bottom,
+        transparent 0px,
+        transparent 3px,
+        rgba(0, 0, 0, 0.15) 3px,
+        rgba(0, 0, 0, 0.15) 4px);
+    pointer-events: none;
+  }
+</style>
+
+<div class="frames-row">
+
+  <!-- Frame 1: Engine/Drive -->
+  <div class="frame-wrap" data-choice="frame1" onclick="toggleSelect(this)">
+    <div class="frame-label">Frame 1 — Engine</div>
+    <div class="oled">
+      <div class="oled-inner">
+        <div class="title-bar">ENGINE</div>
+        <div class="grid2">
+          <div class="cell">
+            <div class="cell-label">RPM</div>
+            <div class="cell-value">3500</div>
+          </div>
+          <div class="cell">
+            <div class="cell-label">SPEED</div>
+            <div class="cell-value">87</div>
+            <div class="cell-unit">km/h</div>
+          </div>
+          <div class="cell">
+            <div class="cell-label">LOAD</div>
+            <div class="cell-value" style="font-size:14px">45%</div>
+          </div>
+          <div class="cell">
+            <div class="cell-label">THROTTLE</div>
+            <div class="cell-value" style="font-size:14px">28%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Frame 2: Sensors -->
+  <div class="frame-wrap" data-choice="frame2" onclick="toggleSelect(this)">
+    <div class="frame-label">Frame 2 — Sensors</div>
+    <div class="oled">
+      <div class="oled-inner">
+        <div class="title-bar">SENSORS</div>
+        <div class="grid2">
+          <div class="cell">
+            <div class="cell-label">COOLANT</div>
+            <div class="cell-value" style="font-size:14px">89°C</div>
+          </div>
+          <div class="cell">
+            <div class="cell-label">INTAKE</div>
+            <div class="cell-value" style="font-size:14px">35°C</div>
+          </div>
+          <div class="cell">
+            <div class="cell-label">FUEL</div>
+            <div class="cell-value" style="font-size:14px">64%</div>
+          </div>
+          <div class="cell">
+            <div class="cell-label">BATTERY</div>
+            <div class="cell-value" style="font-size:14px">12.4V</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Frame 3: Connectivity -->
+  <div class="frame-wrap" data-choice="frame3" onclick="toggleSelect(this)">
+    <div class="frame-label">Frame 3 — Connectivity</div>
+    <div class="oled">
+      <div class="oled-inner">
+        <div class="title-bar">CONNECTIVITY</div>
+        <div class="conn-row">
+          <div class="conn-name">BT</div>
+          <div class="dot-on">●</div>
+          <div class="conn-detail">ZUS-OBD (connected)</div>
+        </div>
+        <div class="conn-row">
+          <div class="conn-name">WIFI</div>
+          <div class="dot-on">●</div>
+          <div class="conn-detail">merlinhome</div>
+        </div>
+        <div class="conn-row">
+          <div class="conn-name">MQTT</div>
+          <div class="dot-on">●</div>
+          <div class="conn-detail">192.168.1.55</div>
+        </div>
+        <div class="conn-row">
+          <div class="conn-name">IP</div>
+          <div style="width:10px"></div>
+          <div class="conn-detail ip">192.168.1.42</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="text-align:center; margin-top:8px">Frames rotate every N seconds (configurable in web UI).
+  Values shown are example data — <code>-1</code> displays as <code>--</code> when OBD not connected.</p>
