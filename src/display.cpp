@@ -52,11 +52,11 @@ static void draw_frame_engine(const OBDData &d) {
 
     draw_title("ENGINE");
     u8g2.drawVLine(63, 10, 54);
-    u8g2.drawHLine(0, 38, 128);
+    u8g2.drawHLine(0, 36, 128);
     draw_cell(0,  11, "RPM",      b0);
     draw_cell(65, 11, "SPEED",    b1);
-    draw_cell(0,  39, "LOAD",     b2);
-    draw_cell(65, 39, "THROTTLE", b3);
+    draw_cell(0,  37, "LOAD",     b2);
+    draw_cell(65, 37, "THROTTLE", b3);
 }
 
 // ---- frame 1: Sensors ----------------------------------------------------
@@ -70,11 +70,11 @@ static void draw_frame_sensors(const OBDData &d) {
 
     draw_title("SENSORS");
     u8g2.drawVLine(63, 10, 54);
-    u8g2.drawHLine(0, 38, 128);
+    u8g2.drawHLine(0, 36, 128);
     draw_cell(0,  11, "COOLANT", b0);
     draw_cell(65, 11, "INTAKE",  b1);
-    draw_cell(0,  39, "FUEL",    b2);
-    draw_cell(65, 39, "BATTERY", b3);
+    draw_cell(0,  37, "FUEL",    b2);
+    draw_cell(65, 37, "BATTERY", b3);
 }
 
 // ---- frame 2: Connectivity -----------------------------------------------
@@ -83,20 +83,22 @@ static void draw_conn_row(uint8_t y, const char *label,
                            bool ok, const char *detail) {
     u8g2.setFont(u8g2_font_5x7_tf);
     u8g2.drawStr(0, y, label);
-    if (ok) u8g2.drawDisc(22, y - 3, 3);
-    else    u8g2.drawCircle(22, y - 3, 3);
-    u8g2.drawStr(29, y, detail);
+    if (ok) u8g2.drawDisc(25, y - 3, 3);
+    else    u8g2.drawCircle(25, y - 3, 3);
+    u8g2.drawStr(32, y, detail);
 }
 
 static void draw_frame_connectivity(bool bt_ok, bool mqtt_ok) {
     draw_title("CONNECTIVITY");
     bool wifi_ok = (WiFi.status() == WL_CONNECTED);
+    String ssid = wifi_ok ? WiFi.SSID() : String("---");
+    String ip   = wifi_ok ? WiFi.localIP().toString() : String("---");
     draw_conn_row(21, "BT",   bt_ok,   bt_ok   ? "Connected" : "Scanning");
-    draw_conn_row(34, "WIFI", wifi_ok, wifi_ok ? WiFi.SSID().c_str() : "---");
+    draw_conn_row(34, "WIFI", wifi_ok, ssid.c_str());
     draw_conn_row(47, "MQTT", mqtt_ok, mqtt_ok ? "Connected" : "---");
     u8g2.setFont(u8g2_font_5x7_tf);
     u8g2.drawStr(0, 61, "IP");
-    u8g2.drawStr(29, 61, wifi_ok ? WiFi.localIP().toString().c_str() : "---");
+    u8g2.drawStr(29, 61, ip.c_str());
 }
 
 // ---- redraw --------------------------------------------------------------
@@ -117,20 +119,23 @@ void display_init() {
     s_interval_ms = storage_get_display_interval();
     u8g2.begin();
     u8g2.clearDisplay();
+    s_last_switch = millis() - s_interval_ms;  // fire on first loop() call
     Serial.printf("[DISP] Init OK — interval=%ums\n", s_interval_ms);
 }
 
 void display_loop(const OBDData &data, bool bt_connected, bool mqtt_connected) {
-    if (millis() - s_last_switch >= s_interval_ms) {
-        s_frame = (s_frame + 1) % 3;
-        s_last_switch = millis();
+    uint32_t now = millis();
+    if (now - s_last_switch >= s_interval_ms) {
+        s_last_switch = now;
         redraw(data, bt_connected, mqtt_connected);
+        s_frame = (s_frame + 1) % 3;
     }
 }
 
 void display_set_interval(uint32_t ms) {
     if (ms == 0) return;
     s_interval_ms = ms;
+    storage_set_display_interval(ms);
 }
 
 uint32_t display_get_interval() {
