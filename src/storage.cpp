@@ -26,3 +26,11 @@ void storage_clear_mac() {
     prefs.remove(NVS_KEY_BT_MAC);
     Serial.println("[NVS] Cleared BT MAC");
 }
+
+uint32_t storage_get_display_interval() {
+    return prefs.getUInt("disp_ms", DISPLAY_DEFAULT_INTERVAL_MS);
+}
+
+void storage_set_display_interval(uint32_t ms) {
+    prefs.putUInt("disp_ms", ms);
+}

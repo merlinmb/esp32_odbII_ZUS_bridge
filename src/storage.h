@@ -14,3 +14,7 @@ void   storage_save_mac(const String &mac);
 
 // Erase the saved MAC (used by the web UI "forget device" button).
 void   storage_clear_mac();
+
+// OLED frame rotation interval (ms), default DISPLAY_DEFAULT_INTERVAL_MS.
+uint32_t storage_get_display_interval();
+void     storage_set_display_interval(uint32_t ms);
