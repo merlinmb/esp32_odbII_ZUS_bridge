@@ -43,3 +43,8 @@
 
 // --- Web server -----------------------------------------------------------
 #define WEB_SERVER_PORT 80
+
+// --- OLED Display ---------------------------------------------------------
+#define DISPLAY_SDA                  21
+#define DISPLAY_SCL                  22
+#define DISPLAY_DEFAULT_INTERVAL_MS  2000UL
