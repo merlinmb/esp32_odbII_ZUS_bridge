@@ -28,9 +28,9 @@ void storage_clear_mac() {
 }
 
 uint32_t storage_get_display_interval() {
-    return prefs.getUInt("disp_ms", DISPLAY_DEFAULT_INTERVAL_MS);
+    return prefs.getUInt(NVS_KEY_DISP_MS, DISPLAY_DEFAULT_INTERVAL_MS);
 }
 
 void storage_set_display_interval(uint32_t ms) {
-    prefs.putUInt("disp_ms", ms);
+    prefs.putUInt(NVS_KEY_DISP_MS, ms);
 }
