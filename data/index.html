@@ -127,6 +127,22 @@
   <div id="device-list" style="margin-top:1rem"></div>
 </div>
 
+<div class="card">
+  <h2>Display Settings</h2>
+  <div class="status-item" style="margin-bottom:.75rem">
+    <span class="status-label">Frame interval (ms)</span>
+    <input id="inp-disp-ms" type="number" min="500" max="60000" step="100"
+           value="2000"
+           style="width:90px;padding:.3rem .5rem;border-radius:.4rem;
+                  border:1px solid var(--border);background:var(--bg);
+                  color:var(--text);font-size:.85rem;text-align:right">
+  </div>
+  <div class="row">
+    <button class="btn-primary" onclick="saveDisplayInterval()">Save</button>
+    <span id="disp-save-status" style="font-size:.8rem;color:var(--muted)"></span>
+  </div>
+</div>
+
 <footer>ESP32 ZUS OBD-II Bridge &bull; MQTT: 192.168.1.55</footer>
 
 <script>
@@ -148,6 +164,7 @@ function fetchStatus() {
     updatePill('pill-mqtt', d.mqtt_connected, 'Connected',    'Disconnected');
     setText('val-ip', d.ip || '...');
     setText('val-saved-mac', d.saved_mac || 'none');
+    loadDisplayInterval(d.display_interval_ms);
 
     const hasMac = d.saved_mac && d.saved_mac.length === 17;
     document.getElementById('btn-forget').style.display = hasMac ? '' : 'none';
@@ -170,6 +187,11 @@ function fetchStatus() {
       obdCard.style.display = 'none';
     }
   }).catch(() => {});
+}
+
+function loadDisplayInterval(ms) {
+  var el = document.getElementById('inp-disp-ms');
+  if (el && ms) el.value = ms;
 }
 
 function updatePill(id, ok, okLabel, errLabel) {
@@ -281,6 +303,20 @@ function reconnect() {
     document.getElementById('scan-status').textContent = 'Reconnecting...';
     setTimeout(fetchStatus, 3000);
   });
+}
+
+function saveDisplayInterval() {
+  var ms = parseInt(document.getElementById('inp-disp-ms').value, 10);
+  var st = document.getElementById('disp-save-status');
+  if (!ms || ms < 500 || ms > 60000) { st.textContent = 'Must be 500-60000 ms'; return; }
+  fetch('/api/display_interval', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ms: ms })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    st.textContent = d.ok ? 'Saved!' : (d.error || 'Error');
+    setTimeout(function() { st.textContent = ''; }, 2000);
+  }).catch(function() { st.textContent = 'Error'; });
 }
 
 function escHtml(s) {

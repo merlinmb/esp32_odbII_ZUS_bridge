@@ -3,6 +3,7 @@
 #include "bt_obd.h"
 #include "mqtt_handler.h"
 #include "storage.h"
+#include "display.h"
 
 #include <WiFi.h>
 #include <WebServer.h>
@@ -140,6 +141,22 @@ static const char PAGE_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   <div id="device-list" style="margin-top:1rem"></div>
 </div>
 
+<div class="card">
+  <h2>Display Settings</h2>
+  <div class="status-item" style="margin-bottom:.75rem">
+    <span class="status-label">Frame interval (ms)</span>
+    <input id="inp-disp-ms" type="number" min="500" max="60000" step="100"
+           value="2000"
+           style="width:90px;padding:.3rem .5rem;border-radius:.4rem;
+                  border:1px solid var(--border);background:var(--bg);
+                  color:var(--text);font-size:.85rem;text-align:right">
+  </div>
+  <div class="row">
+    <button class="btn-primary" onclick="saveDisplayInterval()">Save</button>
+    <span id="disp-save-status" style="font-size:.8rem;color:var(--muted)"></span>
+  </div>
+</div>
+
 <footer>ESP32 ZUS OBD-II Bridge</footer>
 
 <script>
@@ -160,6 +177,7 @@ function fetchStatus() {
     updatePill('pill-mqtt', d.mqtt_connected, 'Connected',    'Disconnected');
     setText('val-ip', d.ip || '...');
     setText('val-saved-mac', d.saved_mac || 'none');
+    loadDisplayInterval(d.display_interval_ms);
 
     const hasMac = d.saved_mac && d.saved_mac.length === 17;
     document.getElementById('btn-forget').style.display = hasMac ? '' : 'none';
@@ -182,6 +200,11 @@ function fetchStatus() {
       obdCard.style.display = 'none';
     }
   }).catch(() => {});
+}
+
+function loadDisplayInterval(ms) {
+  var el = document.getElementById('inp-disp-ms');
+  if (el && ms) el.value = ms;
 }
 
 function updatePill(id, ok, okLabel, errLabel) {
@@ -288,6 +311,20 @@ function reconnect() {
   });
 }
 
+function saveDisplayInterval() {
+  var ms = parseInt(document.getElementById('inp-disp-ms').value, 10);
+  var st = document.getElementById('disp-save-status');
+  if (!ms || ms < 500 || ms > 60000) { st.textContent = 'Must be 500-60000 ms'; return; }
+  fetch('/api/display_interval', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ms: ms })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    st.textContent = d.ok ? 'Saved!' : (d.error || 'Error');
+    setTimeout(function() { st.textContent = ''; }, 2000);
+  }).catch(function() { st.textContent = 'Error'; });
+}
+
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -314,6 +351,7 @@ static void handle_status() {
     doc["bt_connected"]   = bt_obd_is_connected();
     doc["mqtt_connected"] = mqtt_is_connected();
     doc["saved_mac"]      = bt_get_target_mac();
+    doc["display_interval_ms"] = display_get_interval();
 
     OBDData d = bt_obd_get_data();
     JsonObject obd    = doc["obd"].to<JsonObject>();
@@ -393,6 +431,25 @@ static void handle_reconnect() {
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
+static void handle_display_interval() {
+    if (!server.hasArg("plain")) {
+        server.send(400, "application/json", "{\"error\":\"no body\"}");
+        return;
+    }
+    JsonDocument doc;
+    if (deserializeJson(doc, server.arg("plain")) || !doc["ms"].is<uint32_t>()) {
+        server.send(400, "application/json", "{\"error\":\"invalid JSON\"}");
+        return;
+    }
+    uint32_t ms = doc["ms"].as<uint32_t>();
+    if (ms < 500 || ms > 60000) {
+        server.send(400, "application/json", "{\"error\":\"ms must be 500-60000\"}");
+        return;
+    }
+    display_set_interval(ms);
+    server.send(200, "application/json", "{\"ok\":true,\"ms\":" + String(ms) + "}");
+}
+
 // ============================================================================
 //  Init / tick
 // ============================================================================
@@ -405,6 +462,7 @@ void web_server_init() {
     server.on("/api/pair",         HTTP_POST, handle_pair);
     server.on("/api/forget",       HTTP_POST, handle_forget);
     server.on("/api/reconnect",    HTTP_POST, handle_reconnect);
+    server.on("/api/display_interval", HTTP_POST, handle_display_interval);
 
     server.onNotFound([]() {
         server.send(404, "text/plain", "Not found");
