@@ -26,6 +26,7 @@
 #include "bt_obd.h"
 #include "mqtt_handler.h"
 #include "web_server.h"
+#include "display.h"
 
 // ============================================================================
 //  Wi-Fi connection
@@ -89,6 +90,9 @@ void setup() {
     // 5. Web server (needs WiFi and BT objects ready)
     web_server_init();
 
+    // 6. OLED display
+    display_init();
+
     Serial.println("[BOOT] Setup complete\n");
 }
 
@@ -118,6 +122,9 @@ void loop() {
 
     // Service web server requests
     web_server_handle_client();
+
+    // Update OLED
+    display_loop(bt_obd_get_data(), bt_obd_is_connected(), mqtt_is_connected());
 
     delay(10);
 }
