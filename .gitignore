@@ -6,3 +6,7 @@
 src/config.h
 docs/superpowers
 data/
+.superpowers/*
+.superpowers
+.vscode
+.superpowers/brainstorm/1711-1780071501/content/waiting-1.html
