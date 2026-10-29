@@ -129,7 +129,11 @@ void mqtt_init()
     s_mqtt.setServer(MQTT_BROKER, MQTT_PORT);
     s_mqtt.setKeepAlive(60);
     // Bound how long an unreachable broker can stall loop()
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
     s_wifiClient.setConnectionTimeout(1500);
+#else
+    s_wifiClient.setTimeout(2);  // core 2.x: seconds, also bounds connect()
+#endif
     s_mqtt.setSocketTimeout(2);
     Serial.println("[MQTT] Configured");
 }

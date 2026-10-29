@@ -39,7 +39,7 @@ pio run -e esp32dev --target upload
 # Or use VSCode: PlatformIO → Upload
 ```
 
-Upload port defaults to `COM18` (configured in `platformio.ini`). Adjust if your device uses a different port.
+PlatformIO will try to detect the upload port automatically. If it cannot find your ESP32, specify the port in `platformio.ini` with `upload_port = <port>` (for example, `COM18` on Windows or `/dev/ttyUSB0` on Linux).
 
 ### 2. Initial Setup
 

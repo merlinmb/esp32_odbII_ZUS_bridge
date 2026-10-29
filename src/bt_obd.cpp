@@ -4,6 +4,7 @@
 
 #include <BluetoothSerial.h>
 #include <ELMduino.h>
+#include <esp_bt.h>
 #include <esp_bt_main.h>
 #include <esp_gap_bt_api.h>
 #include <vector>
@@ -370,7 +371,10 @@ static void do_poll_step()
     if (item.parse)
     {
         if (st != ELM_SUCCESS)
+        {
+            Serial.printf("[OBD] %s raw error reply: '%s' (state=%d)\n", item.cmd, myELM327.payload, (int)st);
             myELM327.payload[0] = '\0'; // parsers will set NAN
+        }
         item.parse(myELM327.payload);
         s_lastResponse = myELM327.payload;
         if (s_lastResponse.length() > 96)
@@ -435,7 +439,12 @@ void bt_obd_init()
     }
 
     // Init BT in master mode, Classic only (releases BLE controller memory)
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
     SerialBT.begin(BT_DEVICE_NAME, true, true);
+#else
+    esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
+    SerialBT.begin(BT_DEVICE_NAME, true);
+#endif
 
     // Register our GAP callback for discovery scans
     esp_bt_gap_register_callback(gap_cb);
@@ -479,7 +488,11 @@ void bt_obd_loop()
             return;
         }
 
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
         SerialBT.setPin(BT_OBD_PIN, sizeof(BT_OBD_PIN) - 1);
+#else
+        SerialBT.setPin(BT_OBD_PIN);
+#endif
         bool ok = SerialBT.connect(mac);
 
         if (ok && SerialBT.connected())
