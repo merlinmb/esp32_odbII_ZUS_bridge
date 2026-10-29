@@ -168,7 +168,7 @@ static const uint8_t EV_POLL_COUNT = sizeof(POLL_SEQUENCE) / sizeof(POLL_SEQUENC
 static const uint8_t PETROL_POLL_COUNT = sizeof(PETROL_POLL_SEQUENCE) / sizeof(PETROL_POLL_SEQUENCE[0]);
 
 // One-time setup after the ELM327 handshake: 29-bit CAN @ 500k, priority 0x1D.
-static const char *const SETUP_COMMANDS[] = {"ATSP7", "ATCP1D", "ATH0"};
+static const char *const SETUP_COMMANDS[] = {"ATSP6", "ATH0"};
 
 static int hex_nibble(char c)
 {
@@ -339,6 +339,26 @@ static void volvo_setup()
         int8_t st = myELM327.sendCommand_Blocking(cmd);
         Serial.printf("[OBD] %s -> %s (state=%d)\n", cmd, myELM327.payload, (int)st);
     }
+
+    // One-shot DID sweep with headers on: log every reply that isn't NO DATA
+    myELM327.sendCommand_Blocking("ATH1");
+    myELM327.sendCommand_Blocking("ATAR");
+    myELM327.sendCommand_Blocking("ATSH7E0");
+    static const uint16_t RANGES[][2] = {{0x4800, 0x48FF}, {0x4900, 0x49FF}, {0xDD00, 0xDDFF}, {0xF400, 0xF4FF}};
+    for (const auto &r : RANGES)
+    {
+        for (uint32_t did = r[0]; did <= r[1]; did++)
+        {
+            char cmd[8];
+            snprintf(cmd, sizeof(cmd), "22%04X", (unsigned)did);
+            int8_t st = myELM327.sendCommand_Blocking(cmd);
+            if (st != ELM_NO_DATA)
+                Serial.printf("[SWEEP] %s -> '%s' (state=%d)\n", cmd, myELM327.payload, (int)st);
+            delay(1);
+        }
+    }
+    Serial.println("[SWEEP] done");
+    myELM327.sendCommand_Blocking("ATH0");
 }
 
 static void do_poll_step()
@@ -520,7 +540,7 @@ void bt_obd_loop()
         // Protocol '7' = ISO 15765-4 CAN, 29-bit ID, 500 kbaud. Selecting it
         // explicitly skips the auto-search, which needs a Mode 01 reply the
         // EX30 may not give.
-        const char protocol = storage_get_electric_mode() ? '7' : '6';
+        const char protocol = '6';
         if (myELM327.begin(SerialBT, false, OBD_TIMEOUT_MS, protocol))
         {
             Serial.println("[OBD] ELM327 handshake OK");
