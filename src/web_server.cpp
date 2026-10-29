@@ -70,6 +70,12 @@ static const char PAGE_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   .status-row { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .75rem; }
   .status-item { display: flex; align-items: center; justify-content: space-between; }
   .status-label { font-size: .85rem; color: var(--muted); }
+  .tabs { display:flex; gap:.5rem; margin-bottom:1rem; }
+  .tab-button { background:var(--surface); color:var(--muted); border:1px solid var(--border); }
+  .tab-button.active { background:var(--accent); color:#0f172a; }
+  [data-view] { display:none; }
+  [data-view].active { display:block; }
+  .diag-value { font-family:monospace; font-size:.8rem; color:var(--text); overflow-wrap:anywhere; text-align:right; max-width:70%; }
   .mac-display { font-family: monospace; font-size: .85rem;
                  color: var(--accent); background: var(--bg);
                  padding: .2rem .5rem; border-radius: .3rem; }
@@ -80,7 +86,12 @@ static const char PAGE_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
 
 <h1>&#x1F697; ZUS OBD Bridge</h1>
 
-<div class="card" id="status-card">
+<nav class="tabs" aria-label="Pages">
+  <button class="tab-button active" data-tab="dashboard" onclick="showTab('dashboard')">Dashboard</button>
+  <button class="tab-button" data-tab="diagnostics" onclick="showTab('diagnostics')">Diagnostics</button>
+</nav>
+
+<div class="card active" id="status-card" data-view="dashboard">
   <h2>Status</h2>
   <div class="status-row">
     <div class="status-item">
@@ -90,6 +101,10 @@ static const char PAGE_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     <div class="status-item">
       <span class="status-label">MQTT</span>
       <span class="pill err" id="pill-mqtt"><span class="dot"></span>Disconnected</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Wi-Fi</span>
+      <span class="mac-display" id="val-wifi">...</span>
     </div>
     <div class="status-item">
       <span class="status-label">IP Address</span>
@@ -106,21 +121,27 @@ static const char PAGE_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   </div>
 </div>
 
-<div class="card" id="obd-card" style="display:none">
+<div class="card active" id="obd-card" data-view="dashboard" style="display:none">
   <h2>Live OBD Data <span id="obd-age" style="font-size:.7rem;font-weight:400;color:var(--muted)"></span></h2>
   <div class="grid">
-    <div class="metric"><div class="val" id="v-rpm">--</div><div class="lbl">RPM</div></div>
     <div class="metric"><div class="val" id="v-speed">--</div><div class="lbl">Speed (km/h)</div></div>
-    <div class="metric"><div class="val" id="v-coolant">--</div><div class="lbl">Coolant (&#xB0;C)</div></div>
-    <div class="metric"><div class="val" id="v-load">--</div><div class="lbl">Engine Load (%)</div></div>
-    <div class="metric"><div class="val" id="v-fuel">--</div><div class="lbl">Fuel (%)</div></div>
-    <div class="metric"><div class="val" id="v-throttle">--</div><div class="lbl">Throttle (%)</div></div>
-    <div class="metric"><div class="val" id="v-intake">--</div><div class="lbl">Intake (&#xB0;C)</div></div>
-    <div class="metric"><div class="val" id="v-batt">--</div><div class="lbl">Battery (V)</div></div>
+    <div class="metric petrol-metric"><div class="val" id="v-rpm">--</div><div class="lbl">RPM</div></div>
+    <div class="metric petrol-metric"><div class="val" id="v-coolant">--</div><div class="lbl">Coolant (&#xB0;C)</div></div>
+    <div class="metric petrol-metric"><div class="val" id="v-load">--</div><div class="lbl">Engine load (%)</div></div>
+    <div class="metric petrol-metric"><div class="val" id="v-fuel">--</div><div class="lbl">Fuel (%)</div></div>
+    <div class="metric petrol-metric"><div class="val" id="v-throttle">--</div><div class="lbl">Throttle (%)</div></div>
+    <div class="metric petrol-metric"><div class="val" id="v-intake">--</div><div class="lbl">Intake (&#xB0;C)</div></div>
+    <div class="metric"><div class="val" id="v-soc">--</div><div class="lbl">Charge (%)</div></div>
+    <div class="metric"><div class="val" id="v-power">--</div><div class="lbl">Power (kW)</div></div>
+    <div class="metric"><div class="val" id="v-hvv">--</div><div class="lbl">HV Battery (V)</div></div>
+    <div class="metric"><div class="val" id="v-hva">--</div><div class="lbl">HV Current (A)</div></div>
+    <div class="metric"><div class="val" id="v-hvt">--</div><div class="lbl">HV Batt Temp (&#xB0;C)</div></div>
+    <div class="metric"><div class="val" id="v-odo">--</div><div class="lbl">Odometer (km)</div></div>
+    <div class="metric"><div class="val" id="v-batt">--</div><div class="lbl">12V Battery (V)</div></div>
   </div>
 </div>
 
-<div class="card">
+<div class="card active" data-view="dashboard">
   <h2>Pair ZUS Device</h2>
   <p style="font-size:.85rem;color:var(--muted);margin-bottom:1rem">
     Click <strong>Scan</strong> to discover nearby Bluetooth devices, then select your ZUS OBD-II adapter.
@@ -141,8 +162,31 @@ static const char PAGE_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   <div id="device-list" style="margin-top:1rem"></div>
 </div>
 
-<div class="card">
+<div class="card active" data-view="diagnostics" id="diagnostics-card">
+  <h2>OBD-II Diagnostics</h2>
+  <div class="status-row">
+    <div class="status-item"><span class="status-label">Adapter state</span><span class="diag-value" id="diag-state">...</span></div>
+    <div class="status-item"><span class="status-label">Last command</span><span class="diag-value" id="diag-command">...</span></div>
+    <div class="status-item"><span class="status-label">Last response</span><span class="diag-value" id="diag-response">...</span></div>
+    <div class="status-item"><span class="status-label">Valid responses</span><span class="diag-value" id="diag-success">0</span></div>
+    <div class="status-item"><span class="status-label">Failed responses</span><span class="diag-value" id="diag-failed">0</span></div>
+    <div class="status-item"><span class="status-label">Last data update</span><span class="diag-value" id="diag-age">No data yet</span></div>
+  </div>
+</div>
+
+<div class="card active" data-view="diagnostics">
   <h2>Display Settings</h2>
+  <div class="status-item" style="margin-bottom:.75rem">
+    <label class="status-label" for="inp-vehicle-mode">Vehicle type</label>
+    <select id="inp-vehicle-mode" style="padding:.35rem .5rem;border-radius:.3rem;border:1px solid var(--border);background:var(--bg);color:var(--text)">
+      <option value="electric">Electric</option>
+      <option value="petrol">Petrol</option>
+    </select>
+  </div>
+  <div class="row" style="margin-bottom:1rem">
+    <button class="btn-primary" onclick="saveVehicleMode()">Save vehicle type</button>
+    <span id="mode-save-status" style="font-size:.8rem;color:var(--muted)"></span>
+  </div>
   <div class="status-item" style="margin-bottom:.75rem">
     <span class="status-label">Frame interval (ms)</span>
     <input id="inp-disp-ms" type="number" min="500" max="60000" step="100"
@@ -176,8 +220,20 @@ function fetchStatus() {
     updatePill('pill-bt',   d.bt_connected,   'Connected',    'Disconnected');
     updatePill('pill-mqtt', d.mqtt_connected, 'Connected',    'Disconnected');
     setText('val-ip', d.ip || '...');
+    setText('val-wifi', d.wifi_connected
+      ? d.wifi_ssid + ' ' + d.wifi_quality + '%'
+      : (d.ap_mode ? 'AP ' + d.wifi_ssid : 'Offline'));
     setText('val-saved-mac', d.saved_mac || 'none');
     loadDisplayInterval(d.display_interval_ms);
+    document.getElementById('inp-vehicle-mode').value = d.electric_mode ? 'electric' : 'petrol';
+    document.querySelectorAll('.petrol-metric').forEach(el => { el.style.display = d.electric_mode ? 'none' : ''; });
+    const diag = d.diagnostics || {};
+    setText('diag-state', diag.state || 'Unknown');
+    setText('diag-command', diag.last_command || '-');
+    setText('diag-response', diag.last_response || '-');
+    setText('diag-success', diag.successful_responses || 0);
+    setText('diag-failed', diag.failed_responses || 0);
+    setText('diag-age', obdAgeLabel(d.obd && d.obd.age_ms));
 
     const hasMac = d.saved_mac && d.saved_mac.length === 17;
     document.getElementById('btn-forget').style.display = hasMac ? '' : 'none';
@@ -186,20 +242,40 @@ function fetchStatus() {
     const obdCard = document.getElementById('obd-card');
     if (d.bt_connected && obd && obd.age_ms < 30000) {
       obdCard.style.display = '';
-      setVal('v-rpm',     obd.rpm,         0);
-      setVal('v-speed',   obd.speed_kph,   0);
-      setVal('v-coolant', obd.coolant_c,   1);
-      setVal('v-load',    obd.engine_load, 1);
-      setVal('v-fuel',    obd.fuel_pct,    1);
-      setVal('v-throttle',obd.throttle,    1);
-      setVal('v-intake',  obd.intake_c,    1);
-      setVal('v-batt',    obd.battery_v,   2);
+      setVal('v-speed',   obd.speed_kph,      0);
+      setVal('v-rpm',     obd.rpm,            0);
+      setVal('v-coolant', obd.coolant_c,      0);
+      setVal('v-load',    obd.engine_load_pct,1);
+      setVal('v-fuel',    obd.fuel_pct,       1);
+      setVal('v-throttle',obd.throttle_pct,   1);
+      setVal('v-intake',  obd.intake_c,       0);
+      setVal('v-soc',     obd.soc_pct,        1);
+      setVal('v-power',   obd.hv_power_kw,    1);
+      setVal('v-hvv',     obd.hv_voltage,     0);
+      setVal('v-hva',     obd.hv_current_a,   1);
+      setVal('v-hvt',     obd.hv_batt_temp_c, 1);
+      setVal('v-odo',     obd.odometer_km,    0);
+      setVal('v-batt',    obd.battery_v,      2);
       const age = Math.round(obd.age_ms / 1000);
       setText('obd-age', '(' + age + 's ago)');
     } else {
       obdCard.style.display = 'none';
     }
   }).catch(() => {});
+}
+
+function showTab(tab) {
+  document.querySelectorAll('[data-view]').forEach(el => {
+    el.classList.toggle('active', el.dataset.view === tab);
+  });
+  document.querySelectorAll('[data-tab]').forEach(el => {
+    el.classList.toggle('active', el.dataset.tab === tab);
+  });
+}
+
+function obdAgeLabel(ms) {
+  if (ms == null || ms < 0) return 'No data yet';
+  return Math.round(ms / 1000) + 's ago';
 }
 
 function loadDisplayInterval(ms) {
@@ -325,6 +401,19 @@ function saveDisplayInterval() {
   }).catch(function() { st.textContent = 'Error'; });
 }
 
+function saveVehicleMode() {
+  const electric = document.getElementById('inp-vehicle-mode').value === 'electric';
+  const status = document.getElementById('mode-save-status');
+  fetch('/api/vehicle_mode', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ electric: electric })
+  }).then(r => r.json()).then(d => {
+    status.textContent = d.ok ? 'Saved; reconnecting to adapter...' : (d.error || 'Error');
+    setTimeout(() => { status.textContent = ''; }, 3000);
+  }).catch(() => { status.textContent = 'Error'; });
+}
+
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -347,24 +436,44 @@ static void handle_root() {
 static void handle_status() {
     JsonDocument doc;
 
-    doc["ip"]             = WiFi.localIP().toString();
+    bool wifiConnected = WiFi.status() == WL_CONNECTED;
+    doc["ip"]             = wifiConnected ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
+    doc["wifi_connected"] = wifiConnected;
+    doc["wifi_ssid"]      = wifiConnected ? WiFi.SSID() : WIFI_AP_SSID;
+    doc["wifi_rssi"]      = wifiConnected ? WiFi.RSSI() : 0;
+    doc["wifi_quality"]   = wifiConnected ? constrain(2 * (WiFi.RSSI() + 100), 0, 100) : 0;
+    doc["ap_mode"]        = !wifiConnected && WiFi.getMode() == WIFI_AP_STA;
     doc["bt_connected"]   = bt_obd_is_connected();
     doc["mqtt_connected"] = mqtt_is_connected();
     doc["saved_mac"]      = bt_get_target_mac();
     doc["display_interval_ms"] = display_get_interval();
+    doc["electric_mode"]  = storage_get_electric_mode();
 
     OBDData d = bt_obd_get_data();
     JsonObject obd    = doc["obd"].to<JsonObject>();
-    obd["rpm"]         = d.rpm;
-    obd["speed_kph"]   = d.speedKph;
-    obd["coolant_c"]   = d.coolantTempC;
-    obd["engine_load"] = d.engineLoadPct;
-    obd["fuel_pct"]    = d.fuelLevelPct;
-    obd["throttle"]    = d.throttlePct;
-    obd["intake_c"]    = d.intakeTempC;
-    obd["battery_v"]   = d.batteryV;
-    obd["running"]     = d.engineRunning;
+    obd["speed_kph"]      = d.speedKph;
+    obd["rpm"]            = d.rpm;
+    obd["coolant_c"]      = d.coolantC;
+    obd["engine_load_pct"] = d.engineLoadPct;
+    obd["fuel_pct"]       = d.fuelPct;
+    obd["throttle_pct"]   = d.throttlePct;
+    obd["intake_c"]       = d.intakeC;
+    obd["soc_pct"]        = d.socPct;
+    obd["hv_voltage"]     = d.hvVoltage;
+    obd["hv_current_a"]   = d.hvCurrentA;
+    obd["hv_power_kw"]    = d.hvPowerKw;
+    obd["hv_batt_temp_c"] = d.hvBattTempC;
+    obd["odometer_km"]    = d.odometerKm;
+    obd["battery_v"]      = d.batteryV;
     obd["age_ms"]      = (d.lastUpdateMs > 0) ? (long)(millis() - d.lastUpdateMs) : -1;
+
+    OBDDiagnostics diagnostics = bt_obd_get_diagnostics();
+    JsonObject diag = doc["diagnostics"].to<JsonObject>();
+    diag["state"] = diagnostics.state;
+    diag["last_command"] = diagnostics.lastCommand;
+    diag["last_response"] = diagnostics.lastResponse;
+    diag["successful_responses"] = diagnostics.successfulResponses;
+    diag["failed_responses"] = diagnostics.failedResponses;
 
     String body;
     serializeJson(doc, body);
@@ -421,8 +530,7 @@ static void handle_pair() {
 }
 
 static void handle_forget() {
-    storage_clear_mac();
-    bt_obd_force_reconnect();
+    bt_clear_target_mac();
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
@@ -450,6 +558,22 @@ static void handle_display_interval() {
     server.send(200, "application/json", "{\"ok\":true,\"ms\":" + String(ms) + "}");
 }
 
+static void handle_vehicle_mode() {
+  if (!server.hasArg("plain")) {
+    server.send(400, "application/json", "{\"error\":\"no body\"}");
+    return;
+  }
+  JsonDocument doc;
+  if (deserializeJson(doc, server.arg("plain")) || !doc["electric"].is<bool>()) {
+    server.send(400, "application/json", "{\"error\":\"invalid JSON\"}");
+    return;
+  }
+  bool electric = doc["electric"].as<bool>();
+  storage_set_electric_mode(electric);
+  bt_obd_force_reconnect();
+  server.send(200, "application/json", String("{\"ok\":true,\"electric\":") + (electric ? "true}" : "false}"));
+}
+
 // ============================================================================
 //  Init / tick
 // ============================================================================
@@ -463,6 +587,7 @@ void web_server_init() {
     server.on("/api/forget",       HTTP_POST, handle_forget);
     server.on("/api/reconnect",    HTTP_POST, handle_reconnect);
     server.on("/api/display_interval", HTTP_POST, handle_display_interval);
+    server.on("/api/vehicle_mode", HTTP_POST, handle_vehicle_mode);
 
     server.onNotFound([]() {
         server.send(404, "text/plain", "Not found");

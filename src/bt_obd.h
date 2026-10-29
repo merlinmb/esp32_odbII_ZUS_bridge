@@ -13,18 +13,32 @@
 //  and loops back from DISCONNECTED -> SCANNING automatically.
 // =============================================================================
 
-// Latest OBD snapshot (updated while connected; values are -1 when unknown).
+// Latest OBD snapshot (updated while connected; values are NAN when unknown,
+// since current and temperatures can legitimately be negative).
 struct OBDData {
-    float   rpm           = -1;
-    float   speedKph      = -1;
-    float   coolantTempC  = -1;
-    float   engineLoadPct = -1;
-    float   fuelLevelPct  = -1;
-    float   throttlePct   = -1;
-    float   intakeTempC   = -1;
-    float   batteryV      = -1;
-    bool    engineRunning = false;
+    float   rpm           = NAN;
+    float   speedKph      = NAN;
+    float   coolantC      = NAN;
+    float   engineLoadPct = NAN;
+    float   fuelPct       = NAN;
+    float   throttlePct   = NAN;
+    float   intakeC       = NAN;
+    float   socPct        = NAN;   // HV battery state of charge
+    float   hvVoltage     = NAN;   // HV battery voltage
+    float   hvCurrentA    = NAN;   // HV battery current (sign convention unverified)
+    float   hvPowerKw     = NAN;   // hvVoltage * hvCurrentA / 1000
+    float   hvBattTempC   = NAN;   // HV battery average temperature
+    float   odometerKm    = NAN;
+    float   batteryV      = NAN;   // 12 V, read by the adapter itself (AT RV)
     unsigned long lastUpdateMs = 0;  // millis() when last successfully polled
+};
+
+struct OBDDiagnostics {
+    String state;
+    String lastCommand;
+    String lastResponse;
+    uint32_t successfulResponses = 0;
+    uint32_t failedResponses = 0;
 };
 
 // Bluetooth scan result (used by the web pairing page).
@@ -43,6 +57,7 @@ bool bt_obd_is_connected();
 
 // Returns a copy of the latest OBD data snapshot.
 OBDData bt_obd_get_data();
+OBDDiagnostics bt_obd_get_diagnostics();
 
 // ---- web pairing helpers ------------------------------------------------
 
@@ -59,6 +74,9 @@ std::vector<BTScanResult> bt_scan_get_results();
 
 // Set the target MAC from the web UI; persists to NVS automatically.
 void bt_set_target_mac(const String &mac);
+
+// Forget the target MAC (NVS and RAM) and stop reconnecting.
+void bt_clear_target_mac();
 
 // Returns the currently configured target MAC (empty string if none).
 String bt_get_target_mac();

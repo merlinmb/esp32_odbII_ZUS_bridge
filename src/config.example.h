@@ -9,12 +9,14 @@
 #define WIFI_SSID "examplessid"
 #define WIFI_PASSWORD "examplepassword"
 #define WIFI_CONNECT_TIMEOUT_MS 20000UL // Give up after 20 s, retry later
+#define WIFI_AP_SSID "ZUS-OBD-Bridge"
+#define WIFI_AP_PASSWORD "zusbridge"
 
 // --- MQTT -----------------------------------------------------------------
 #define MQTT_BROKER "192.168.1.55"
 #define MQTT_PORT 1883
 #define MQTT_CLIENT_ID "esp32-zus-bridge"
-// Root topic; individual values published as sub-topics, e.g. car/obd/rpm
+// Root topic; individual values published as sub-topics, e.g. car/obd/speed_kph
 #define MQTT_TOPIC_ROOT "car/obd"
 // How often to push data to MQTT (only if fresh OBD data exists)
 #define MQTT_PUBLISH_INTERVAL_MS (10UL * 60UL * 1000UL) // 10 minutes
@@ -35,11 +37,13 @@
 // ELMduino response timeout per PID request
 #define OBD_TIMEOUT_MS 2000
 // How frequently to poll the OBD PIDs while connected (ms)
-#define OBD_POLL_INTERVAL_MS 5000UL
+#define OBD_POLL_INTERVAL_MS 1000UL
 
 // --- NVS (Non-Volatile Storage) ------------------------------------------
 #define NVS_NAMESPACE "zus_bridge"
 #define NVS_KEY_BT_MAC "bt_mac" // Stored as "AA:BB:CC:DD:EE:FF"
+#define NVS_KEY_DISP_MS "disp_ms"
+#define NVS_KEY_EV_MODE "ev_mode"
 
 // --- Web server -----------------------------------------------------------
 #define WEB_SERVER_PORT 80

@@ -11,6 +11,9 @@ void mqtt_loop();
 // Returns true when connected to the broker.
 bool mqtt_is_connected();
 
+// Broadcast device details after a successful MQTT connection.
+void mqttTransmitInitStat(String deviceName);
+
 // Publish an OBD snapshot.  Only actually sends if:
 //   1. The broker is connected, AND
 //   2. `data.lastUpdateMs` is newer than the last publish, AND

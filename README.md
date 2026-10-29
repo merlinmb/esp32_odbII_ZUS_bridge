@@ -10,6 +10,9 @@ An ESP32-based bridge that connects to a ZUS OBD-II Bluetooth adapter and publis
 - **Persistent Storage**: Remembers paired device MAC address across reboots
 - **OLED Display**: Real-time status display showing connection state, OBD data, and MQTT status
 - **WiFi Auto-Reconnect**: Automatic WiFi reconnection with background retry
+- **Fallback Access Point**: Protected setup network when configured WiFi is unavailable
+- **Vehicle Profiles**: Select electric or petrol polling and OLED layouts from the web UI
+- **OBD Diagnostics**: View adapter state, last command/response, and response counts
 - **Configurable**: Easy setup via `config.h` for WiFi, MQTT, Bluetooth, and OBD parameters
 
 ## Hardware Requirements
@@ -55,6 +58,7 @@ Edit `src/config.h` before flashing to set:
 - `WIFI_SSID` — your home network SSID
 - `WIFI_PASSWORD` — your WiFi password
 - `WIFI_CONNECT_TIMEOUT_MS` — connection timeout (default: 20s)
+- `WIFI_AP_SSID` and `WIFI_AP_PASSWORD` — fallback access point credentials
 
 **MQTT**
 - `MQTT_BROKER` — IP address of your MQTT broker

@@ -3,10 +3,12 @@
 #include <Preferences.h>
 
 static Preferences prefs;
+static bool s_electricMode = true;  // cached: read on every poll step
 
 void storage_init() {
     // Open in read-write mode; creates namespace if it doesn't exist.
     prefs.begin(NVS_NAMESPACE, false);
+    s_electricMode = prefs.getBool(NVS_KEY_EV_MODE, true);
     Serial.println("[NVS] Storage initialised");
 }
 
@@ -33,4 +35,13 @@ uint32_t storage_get_display_interval() {
 
 void storage_set_display_interval(uint32_t ms) {
     prefs.putUInt(NVS_KEY_DISP_MS, ms);
+}
+
+bool storage_get_electric_mode() {
+    return s_electricMode;
+}
+
+void storage_set_electric_mode(bool electric) {
+    s_electricMode = electric;
+    prefs.putBool(NVS_KEY_EV_MODE, electric);
 }

@@ -40,7 +40,12 @@ static void wifi_connect() {
     unsigned long start = millis();
     while (WiFi.status() != WL_CONNECTED) {
         if (millis() - start > WIFI_CONNECT_TIMEOUT_MS) {
-            Serial.println("\n[WiFi] Timed out — will retry in background");
+            Serial.println("\n[WiFi] Timed out - starting setup access point");
+            WiFi.mode(WIFI_AP_STA);
+            WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD);
+            Serial.printf("[WiFi] AP '%s' — IP: %s\n", WIFI_AP_SSID,
+                WiFi.softAPIP().toString().c_str());
+            display_boot_status("Wi-Fi AP ready");
             return;
         }
         delay(500);
@@ -50,21 +55,29 @@ static void wifi_connect() {
         WiFi.localIP().toString().c_str());
 }
 
+// Non-blocking: kicks off a reconnect and returns. If still offline on the
+// next check (~30 s later), the setup AP is started.
 static void wifi_ensure_connected() {
-    if (WiFi.status() == WL_CONNECTED) return;
-    Serial.println("[WiFi] Reconnecting...");
-    WiFi.reconnect();
-    unsigned long start = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - start < 10000UL) {
-        delay(500);
-        Serial.print(".");
-    }
+    static bool s_wasOffline = false;
     if (WiFi.status() == WL_CONNECTED) {
-        Serial.printf("\n[WiFi] Reconnected — IP: %s\n",
-            WiFi.localIP().toString().c_str());
-    } else {
-        Serial.println("\n[WiFi] Still offline");
+        if (s_wasOffline) {
+            Serial.printf("[WiFi] Reconnected — IP: %s\n",
+                WiFi.localIP().toString().c_str());
+        }
+        s_wasOffline = false;
+        return;
     }
+    Serial.println("[WiFi] Offline - reconnecting in background");
+    WiFi.reconnect();
+    if (s_wasOffline) {
+        if (WiFi.getMode() != WIFI_AP_STA) {
+            WiFi.mode(WIFI_AP_STA);
+            WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD);
+            Serial.printf("[WiFi] AP '%s' — IP: %s\n", WIFI_AP_SSID,
+                WiFi.softAPIP().toString().c_str());
+        }
+    }
+    s_wasOffline = true;
 }
 
 // ============================================================================
@@ -78,21 +91,27 @@ void setup() {
     // 1. Persistent storage
     storage_init();
 
+    // Start the OLED before network and Bluetooth setup can block.
+    display_init();
+    display_boot_status("Settings loaded");
+
     // 2. Wi-Fi (blocking until connected or timeout)
+    display_boot_status("Connecting Wi-Fi...");
     wifi_connect();
 
     // 3. Bluetooth + OBD module
+    display_boot_status("Starting Bluetooth...");
     bt_obd_init();
 
     // 4. MQTT client
+    display_boot_status("Starting MQTT...");
     mqtt_init();
 
     // 5. Web server (needs WiFi and BT objects ready)
+    display_boot_status("Starting web server...");
     web_server_init();
 
-    // 6. OLED display
-    display_init();
-
+    display_boot_status("Setup complete");
     Serial.println("[BOOT] Setup complete\n");
 }
 
