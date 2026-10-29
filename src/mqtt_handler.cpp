@@ -90,25 +90,25 @@ static bool do_publish(const OBDData &data)
 
     // JSON summary on root topic (ArduinoJson writes NAN as null)
     JsonDocument doc;
-    doc["speed"]   = data.speedKph;
+    doc["speed"] = data.speedKph;
     doc["battery"] = data.batteryV;
     if (electric)
     {
-        doc["soc"]        = data.socPct;
+        doc["soc"] = data.socPct;
         doc["hv_voltage"] = data.hvVoltage;
         doc["hv_current"] = data.hvCurrentA;
-        doc["hv_power"]   = data.hvPowerKw;
-        doc["hv_temp"]    = data.hvBattTempC;
-        doc["odometer"]   = data.odometerKm;
+        doc["hv_power"] = data.hvPowerKw;
+        doc["hv_temp"] = data.hvBattTempC;
+        doc["odometer"] = data.odometerKm;
     }
     else
     {
-        doc["rpm"]         = data.rpm;
-        doc["coolant"]     = data.coolantC;
+        doc["rpm"] = data.rpm;
+        doc["coolant"] = data.coolantC;
         doc["engine_load"] = data.engineLoadPct;
-        doc["fuel"]        = data.fuelPct;
-        doc["throttle"]    = data.throttlePct;
-        doc["intake"]      = data.intakeC;
+        doc["fuel"] = data.fuelPct;
+        doc["throttle"] = data.throttlePct;
+        doc["intake"] = data.intakeC;
     }
     char json[256];
     serializeJson(doc, json, sizeof(json));
@@ -126,13 +126,16 @@ static bool do_publish(const OBDData &data)
 
 void mqtt_init()
 {
+    if (!MQTT_ENABLED)
+        return;
+
     s_mqtt.setServer(MQTT_BROKER, MQTT_PORT);
     s_mqtt.setKeepAlive(60);
     // Bound how long an unreachable broker can stall loop()
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
     s_wifiClient.setConnectionTimeout(1500);
 #else
-    s_wifiClient.setTimeout(2);  // core 2.x: seconds, also bounds connect()
+    s_wifiClient.setTimeout(2); // core 2.x: seconds, also bounds connect()
 #endif
     s_mqtt.setSocketTimeout(2);
     Serial.println("[MQTT] Configured");
@@ -140,6 +143,9 @@ void mqtt_init()
 
 void mqtt_loop()
 {
+    if (!MQTT_ENABLED)
+        return;
+
     if (!s_mqtt.connected())
     {
         unsigned long now = millis();
@@ -157,17 +163,20 @@ void mqtt_loop()
 
 bool mqtt_is_connected()
 {
-    return s_mqtt.connected();
+    return MQTT_ENABLED && s_mqtt.connected();
 }
 
 void mqttTransmitInitStat(String deviceName)
 {
+    if (!MQTT_ENABLED)
+        return;
+
     mqttPublishStat(deviceName, "init", "{\"value1\":\"" + WiFi.localIP().toString() + "\",\"value2\":\"" + WiFi.macAddress() + "\",\"value3\":\"" + deviceName + "\"}", true);
 }
 
 bool mqtt_publish_if_due(const OBDData &data)
 {
-    if (!s_mqtt.connected())
+    if (!MQTT_ENABLED || !s_mqtt.connected())
         return false;
 
     // No fresh data
@@ -188,5 +197,8 @@ bool mqtt_publish_if_due(const OBDData &data)
 
 bool mqtt_publish_now(const OBDData &data)
 {
+    if (!MQTT_ENABLED)
+        return false;
+
     return do_publish(data);
 }

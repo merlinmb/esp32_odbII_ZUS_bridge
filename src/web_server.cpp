@@ -218,7 +218,7 @@ function startStatusPoll() {
 function fetchStatus() {
   fetch('/api/status').then(r => r.json()).then(d => {
     updatePill('pill-bt',   d.bt_connected,   'Connected',    'Disconnected');
-    updatePill('pill-mqtt', d.mqtt_connected, 'Connected',    'Disconnected');
+    updatePill('pill-mqtt', d.mqtt_connected, 'Connected',    'Disconnected', !d.mqtt_enabled);
     setText('val-ip', d.ip || '...');
     setText('val-wifi', d.wifi_connected
       ? d.wifi_ssid + ' ' + d.wifi_quality + '%'
@@ -283,10 +283,10 @@ function loadDisplayInterval(ms) {
   if (el && ms != null) el.value = ms;
 }
 
-function updatePill(id, ok, okLabel, errLabel) {
+function updatePill(id, ok, okLabel, errLabel, disabled = false) {
   const el = document.getElementById(id);
-  el.className = 'pill ' + (ok ? 'ok' : 'err');
-  el.innerHTML = '<span class="dot"></span>' + (ok ? okLabel : errLabel);
+  el.className = 'pill ' + (disabled ? 'warn' : ok ? 'ok' : 'err');
+  el.innerHTML = '<span class="dot"></span>' + (disabled ? 'Disabled' : ok ? okLabel : errLabel);
 }
 
 function setText(id, val) { document.getElementById(id).textContent = val; }
@@ -428,143 +428,166 @@ startStatusPoll();
 //  REST endpoint helpers
 // ============================================================================
 
-static void handle_root() {
-    server.sendHeader("Connection", "close");
-    server.send_P(200, "text/html", PAGE_HTML);
+static void handle_root()
+{
+  server.sendHeader("Connection", "close");
+  server.send_P(200, "text/html", PAGE_HTML);
 }
 
-static void handle_status() {
-    JsonDocument doc;
+static void handle_status()
+{
+  JsonDocument doc;
 
-    bool wifiConnected = WiFi.status() == WL_CONNECTED;
-    doc["ip"]             = wifiConnected ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
-    doc["wifi_connected"] = wifiConnected;
-    doc["wifi_ssid"]      = wifiConnected ? WiFi.SSID() : WIFI_AP_SSID;
-    doc["wifi_rssi"]      = wifiConnected ? WiFi.RSSI() : 0;
-    doc["wifi_quality"]   = wifiConnected ? constrain(2 * (WiFi.RSSI() + 100), 0, 100) : 0;
-    doc["ap_mode"]        = !wifiConnected && WiFi.getMode() == WIFI_AP_STA;
-    doc["bt_connected"]   = bt_obd_is_connected();
-    doc["mqtt_connected"] = mqtt_is_connected();
-    doc["saved_mac"]      = bt_get_target_mac();
-    doc["display_interval_ms"] = display_get_interval();
-    doc["electric_mode"]  = storage_get_electric_mode();
+  bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  doc["ip"] = wifiConnected ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
+  doc["wifi_connected"] = wifiConnected;
+  doc["wifi_ssid"] = wifiConnected ? WiFi.SSID() : WIFI_AP_SSID;
+  doc["wifi_rssi"] = wifiConnected ? WiFi.RSSI() : 0;
+  doc["wifi_quality"] = wifiConnected ? constrain(2 * (WiFi.RSSI() + 100), 0, 100) : 0;
+  doc["ap_mode"] = !wifiConnected && WiFi.getMode() == WIFI_AP_STA;
+  doc["bt_connected"] = bt_obd_is_connected();
+  doc["mqtt_enabled"] = MQTT_ENABLED;
+  doc["mqtt_connected"] = mqtt_is_connected();
+  doc["saved_mac"] = bt_get_target_mac();
+  doc["display_interval_ms"] = display_get_interval();
+  doc["electric_mode"] = storage_get_electric_mode();
 
-    OBDData d = bt_obd_get_data();
-    JsonObject obd    = doc["obd"].to<JsonObject>();
-    obd["speed_kph"]      = d.speedKph;
-    obd["rpm"]            = d.rpm;
-    obd["coolant_c"]      = d.coolantC;
-    obd["engine_load_pct"] = d.engineLoadPct;
-    obd["fuel_pct"]       = d.fuelPct;
-    obd["throttle_pct"]   = d.throttlePct;
-    obd["intake_c"]       = d.intakeC;
-    obd["soc_pct"]        = d.socPct;
-    obd["hv_voltage"]     = d.hvVoltage;
-    obd["hv_current_a"]   = d.hvCurrentA;
-    obd["hv_power_kw"]    = d.hvPowerKw;
-    obd["hv_batt_temp_c"] = d.hvBattTempC;
-    obd["odometer_km"]    = d.odometerKm;
-    obd["battery_v"]      = d.batteryV;
-    obd["age_ms"]      = (d.lastUpdateMs > 0) ? (long)(millis() - d.lastUpdateMs) : -1;
+  OBDData d = bt_obd_get_data();
+  JsonObject obd = doc["obd"].to<JsonObject>();
+  obd["speed_kph"] = d.speedKph;
+  obd["rpm"] = d.rpm;
+  obd["coolant_c"] = d.coolantC;
+  obd["engine_load_pct"] = d.engineLoadPct;
+  obd["fuel_pct"] = d.fuelPct;
+  obd["throttle_pct"] = d.throttlePct;
+  obd["intake_c"] = d.intakeC;
+  obd["soc_pct"] = d.socPct;
+  obd["hv_voltage"] = d.hvVoltage;
+  obd["hv_current_a"] = d.hvCurrentA;
+  obd["hv_power_kw"] = d.hvPowerKw;
+  obd["hv_batt_temp_c"] = d.hvBattTempC;
+  obd["odometer_km"] = d.odometerKm;
+  obd["battery_v"] = d.batteryV;
+  obd["age_ms"] = (d.lastUpdateMs > 0) ? (long)(millis() - d.lastUpdateMs) : -1;
 
-    OBDDiagnostics diagnostics = bt_obd_get_diagnostics();
-    JsonObject diag = doc["diagnostics"].to<JsonObject>();
-    diag["state"] = diagnostics.state;
-    diag["last_command"] = diagnostics.lastCommand;
-    diag["last_response"] = diagnostics.lastResponse;
-    diag["successful_responses"] = diagnostics.successfulResponses;
-    diag["failed_responses"] = diagnostics.failedResponses;
+  OBDDiagnostics diagnostics = bt_obd_get_diagnostics();
+  JsonObject diag = doc["diagnostics"].to<JsonObject>();
+  diag["state"] = diagnostics.state;
+  diag["last_command"] = diagnostics.lastCommand;
+  diag["last_response"] = diagnostics.lastResponse;
+  diag["successful_responses"] = diagnostics.successfulResponses;
+  diag["failed_responses"] = diagnostics.failedResponses;
 
-    String body;
-    serializeJson(doc, body);
-    server.send(200, "application/json", body);
+  String body;
+  serializeJson(doc, body);
+  server.send(200, "application/json", body);
 }
 
-static void handle_scan_start() {
-    if (bt_scan_in_progress()) {
-        server.send(409, "application/json", "{\"error\":\"scan already running\"}");
-        return;
-    }
-    if (bt_scan_start()) {
-        server.send(200, "application/json",
-            "{\"ok\":true,\"duration_sec\":" + String(BT_SCAN_DURATION_SEC) + "}");
-    } else {
-        server.send(500, "application/json", "{\"error\":\"failed to start scan\"}");
-    }
+static void handle_scan_start()
+{
+  if (bt_scan_in_progress())
+  {
+    server.send(409, "application/json", "{\"error\":\"scan already running\"}");
+    return;
+  }
+  if (bt_scan_start())
+  {
+    server.send(200, "application/json",
+                "{\"ok\":true,\"duration_sec\":" + String(BT_SCAN_DURATION_SEC) + "}");
+  }
+  else
+  {
+    server.send(500, "application/json", "{\"error\":\"failed to start scan\"}");
+  }
 }
 
-static void handle_scan_results() {
-    JsonDocument doc;
-    doc["scanning"] = bt_scan_in_progress();
-    JsonArray devices = doc["devices"].to<JsonArray>();
-    for (auto &r : bt_scan_get_results()) {
-        JsonObject d = devices.add<JsonObject>();
-        d["name"]    = r.name.length() ? r.name : "(unknown)";
-        d["address"] = r.address;
-        d["rssi"]    = r.rssi;
-    }
-    String body;
-    serializeJson(doc, body);
-    server.send(200, "application/json", body);
+static void handle_scan_results()
+{
+  JsonDocument doc;
+  doc["scanning"] = bt_scan_in_progress();
+  JsonArray devices = doc["devices"].to<JsonArray>();
+  for (auto &r : bt_scan_get_results())
+  {
+    JsonObject d = devices.add<JsonObject>();
+    d["name"] = r.name.length() ? r.name : "(unknown)";
+    d["address"] = r.address;
+    d["rssi"] = r.rssi;
+  }
+  String body;
+  serializeJson(doc, body);
+  server.send(200, "application/json", body);
 }
 
-static void handle_pair() {
-    if (!server.hasArg("plain")) {
-        server.send(400, "application/json", "{\"error\":\"no body\"}");
-        return;
-    }
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, server.arg("plain"));
-    if (err || !doc["mac"].is<const char *>()) {
-        server.send(400, "application/json", "{\"error\":\"invalid JSON\"}");
-        return;
-    }
-    String mac = doc["mac"].as<String>();
-    mac.toUpperCase();
-    if (mac.length() != 17) {
-        server.send(400, "application/json", "{\"error\":\"bad MAC format\"}");
-        return;
-    }
-    bt_set_target_mac(mac);
-    server.send(200, "application/json", "{\"ok\":true,\"mac\":\"" + mac + "\"}");
-}
-
-static void handle_forget() {
-    bt_clear_target_mac();
-    server.send(200, "application/json", "{\"ok\":true}");
-}
-
-static void handle_reconnect() {
-    bt_obd_force_reconnect();
-    server.send(200, "application/json", "{\"ok\":true}");
-}
-
-static void handle_display_interval() {
-    if (!server.hasArg("plain")) {
-        server.send(400, "application/json", "{\"error\":\"no body\"}");
-        return;
-    }
-    JsonDocument doc;
-    if (deserializeJson(doc, server.arg("plain")) || !doc["ms"].is<uint32_t>()) {
-        server.send(400, "application/json", "{\"error\":\"invalid JSON\"}");
-        return;
-    }
-    uint32_t ms = doc["ms"].as<uint32_t>();
-    if (ms < 500 || ms > 60000) {
-        server.send(400, "application/json", "{\"error\":\"ms must be 500-60000\"}");
-        return;
-    }
-    display_set_interval(ms);
-    server.send(200, "application/json", "{\"ok\":true,\"ms\":" + String(ms) + "}");
-}
-
-static void handle_vehicle_mode() {
-  if (!server.hasArg("plain")) {
+static void handle_pair()
+{
+  if (!server.hasArg("plain"))
+  {
     server.send(400, "application/json", "{\"error\":\"no body\"}");
     return;
   }
   JsonDocument doc;
-  if (deserializeJson(doc, server.arg("plain")) || !doc["electric"].is<bool>()) {
+  DeserializationError err = deserializeJson(doc, server.arg("plain"));
+  if (err || !doc["mac"].is<const char *>())
+  {
+    server.send(400, "application/json", "{\"error\":\"invalid JSON\"}");
+    return;
+  }
+  String mac = doc["mac"].as<String>();
+  mac.toUpperCase();
+  if (mac.length() != 17)
+  {
+    server.send(400, "application/json", "{\"error\":\"bad MAC format\"}");
+    return;
+  }
+  bt_set_target_mac(mac);
+  server.send(200, "application/json", "{\"ok\":true,\"mac\":\"" + mac + "\"}");
+}
+
+static void handle_forget()
+{
+  bt_clear_target_mac();
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+static void handle_reconnect()
+{
+  bt_obd_force_reconnect();
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+static void handle_display_interval()
+{
+  if (!server.hasArg("plain"))
+  {
+    server.send(400, "application/json", "{\"error\":\"no body\"}");
+    return;
+  }
+  JsonDocument doc;
+  if (deserializeJson(doc, server.arg("plain")) || !doc["ms"].is<uint32_t>())
+  {
+    server.send(400, "application/json", "{\"error\":\"invalid JSON\"}");
+    return;
+  }
+  uint32_t ms = doc["ms"].as<uint32_t>();
+  if (ms < 500 || ms > 60000)
+  {
+    server.send(400, "application/json", "{\"error\":\"ms must be 500-60000\"}");
+    return;
+  }
+  display_set_interval(ms);
+  server.send(200, "application/json", "{\"ok\":true,\"ms\":" + String(ms) + "}");
+}
+
+static void handle_vehicle_mode()
+{
+  if (!server.hasArg("plain"))
+  {
+    server.send(400, "application/json", "{\"error\":\"no body\"}");
+    return;
+  }
+  JsonDocument doc;
+  if (deserializeJson(doc, server.arg("plain")) || !doc["electric"].is<bool>())
+  {
     server.send(400, "application/json", "{\"error\":\"invalid JSON\"}");
     return;
   }
@@ -578,26 +601,27 @@ static void handle_vehicle_mode() {
 //  Init / tick
 // ============================================================================
 
-void web_server_init() {
-    server.on("/",                 HTTP_GET,  handle_root);
-    server.on("/api/status",       HTTP_GET,  handle_status);
-    server.on("/api/scan/start",   HTTP_POST, handle_scan_start);
-    server.on("/api/scan/results", HTTP_GET,  handle_scan_results);
-    server.on("/api/pair",         HTTP_POST, handle_pair);
-    server.on("/api/forget",       HTTP_POST, handle_forget);
-    server.on("/api/reconnect",    HTTP_POST, handle_reconnect);
-    server.on("/api/display_interval", HTTP_POST, handle_display_interval);
-    server.on("/api/vehicle_mode", HTTP_POST, handle_vehicle_mode);
+void web_server_init()
+{
+  server.on("/", HTTP_GET, handle_root);
+  server.on("/api/status", HTTP_GET, handle_status);
+  server.on("/api/scan/start", HTTP_POST, handle_scan_start);
+  server.on("/api/scan/results", HTTP_GET, handle_scan_results);
+  server.on("/api/pair", HTTP_POST, handle_pair);
+  server.on("/api/forget", HTTP_POST, handle_forget);
+  server.on("/api/reconnect", HTTP_POST, handle_reconnect);
+  server.on("/api/display_interval", HTTP_POST, handle_display_interval);
+  server.on("/api/vehicle_mode", HTTP_POST, handle_vehicle_mode);
 
-    server.onNotFound([]() {
-        server.send(404, "text/plain", "Not found");
-    });
+  server.onNotFound([]()
+                    { server.send(404, "text/plain", "Not found"); });
 
-    server.begin();
-    Serial.printf("[WEB] Server started at http://%s/\n",
-        WiFi.localIP().toString().c_str());
+  server.begin();
+  Serial.printf("[WEB] Server started at http://%s/\n",
+                WiFi.localIP().toString().c_str());
 }
 
-void web_server_handle_client() {
-    server.handleClient();
+void web_server_handle_client()
+{
+  server.handleClient();
 }

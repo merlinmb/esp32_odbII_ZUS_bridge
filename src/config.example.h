@@ -13,6 +13,7 @@
 #define WIFI_AP_PASSWORD "zusbridge"
 
 // --- MQTT -----------------------------------------------------------------
+#define MQTT_ENABLED 1
 #define MQTT_BROKER "192.168.1.55"
 #define MQTT_PORT 1883
 #define MQTT_CLIENT_ID "esp32-zus-bridge"
@@ -49,6 +50,6 @@
 #define WEB_SERVER_PORT 80
 
 // --- OLED Display ---------------------------------------------------------
-#define DISPLAY_SDA                  21
-#define DISPLAY_SCL                  22
-#define DISPLAY_DEFAULT_INTERVAL_MS  2000UL
+#define DISPLAY_SDA 21
+#define DISPLAY_SCL 22
+#define DISPLAY_DEFAULT_INTERVAL_MS 2000UL
