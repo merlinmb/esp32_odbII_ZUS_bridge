@@ -555,6 +555,13 @@ static void handle_reconnect()
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
+static void handle_sweep()
+{
+  bool ok = bt_obd_start_sweep();
+  server.send(ok ? 200 : 409, "application/json",
+              ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"Needs electric mode and an active OBD connection\"}");
+}
+
 static void handle_display_interval()
 {
   if (!server.hasArg("plain"))
@@ -610,6 +617,7 @@ void web_server_init()
   server.on("/api/pair", HTTP_POST, handle_pair);
   server.on("/api/forget", HTTP_POST, handle_forget);
   server.on("/api/reconnect", HTTP_POST, handle_reconnect);
+  server.on("/api/sweep", HTTP_POST, handle_sweep);
   server.on("/api/display_interval", HTTP_POST, handle_display_interval);
   server.on("/api/vehicle_mode", HTTP_POST, handle_vehicle_mode);
 

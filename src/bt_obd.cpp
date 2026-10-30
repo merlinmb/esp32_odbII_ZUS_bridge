@@ -111,13 +111,18 @@ static void gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param)
 //    request ID  = 1D D0 16 <ecu>    (ATCP 1D + ATSH D016<ecu>)
 //    response ID = 1E C? ?E 80       (ATCRA, ELM's default filter would drop it)
 //
-//    ECU 0x37 (VCU)  : F40D speed, DD01 odometer
+//    flow ctrl   = 1D D0 16 <ecu>    (ATFCSH, so multi-frame replies get
+//                                     acknowledged on the right ID)
+//    response ID = 1E C<ecu*2> E 80, e.g. 0x35 -> 1EC6AE80
+//
+//    ECU 0x37 (VCU)  : F40D speed (UNVERIFIED on SEA), DD01 odometer
 //    ECU 0x35 (BECM) : 4801 SoC, 4802 current, 4803 voltage, 491B avg temp
 //
-//  Source: OBDb signal sets for Polestar 2 / XC40 Recharge / Polestar 4
-//  (https://github.com/OBDb). Polestar 4 is SEA-based like the EX30, and the
-//  4801 SoC scaling matches a reported EX30 capture. Not yet confirmed on an
-//  EX30 for every DID — check the [OBD] serial log for raw responses.
+//  BECM addressing and the 4801/4802/4803 scalings are confirmed by the
+//  Smart #1 / EX30 community (Car Scanner logs, smart-emotion.de ABRP thread).
+//  DD01 on the VCU comes from the OBDb Polestar 4 signal set. F40D and 491B
+//  come from Polestar 2 (CMA) and may not answer on the EX30 - use the
+//  on-demand DID sweep (bt_obd_start_sweep / POST /api/sweep) to probe.
 // ============================================================================
 
 static void parse_speed(const char *p);
@@ -142,10 +147,12 @@ struct PollItem
 
 static const PollItem POLL_SEQUENCE[] = {
     {"ATSHD01637", nullptr}, // VCU
+    {"ATFCSH1DD01637", nullptr},
     {"ATCRA1EC6EE80", nullptr},
     {"22F40D", parse_speed},
     {"22DD01", parse_odometer},
     {"ATSHD01635", nullptr}, // BECM
+    {"ATFCSH1DD01635", nullptr},
     {"ATCRA1EC6AE80", nullptr},
     {"224801", parse_soc},
     {"224802", parse_hv_current},
@@ -167,8 +174,17 @@ static const PollItem PETROL_POLL_SEQUENCE[] = {
 static const uint8_t EV_POLL_COUNT = sizeof(POLL_SEQUENCE) / sizeof(POLL_SEQUENCE[0]);
 static const uint8_t PETROL_POLL_COUNT = sizeof(PETROL_POLL_SEQUENCE) / sizeof(PETROL_POLL_SEQUENCE[0]);
 
-// One-time setup after the ELM327 handshake: 29-bit CAN @ 500k, priority 0x1D.
-static const char *const SETUP_COMMANDS[] = {"ATSP6", "ATH0"};
+// One-time setup after the ELM327 handshake: 29-bit CAN @ 500k (protocol 7),
+// priority byte 0x1D, headers off, and user-defined flow control. ATFCSM1 is
+// only accepted once ATFCSH and ATFCSD have been set. If the adapter answers
+// '?' to ATCP or ATFC* it cannot do the EX30's addressing.
+static const char *const SETUP_COMMANDS[] = {
+    "ATSP7", "ATCP1D", "ATH0",
+    "ATFCSH1DD01635", "ATFCSD300000", "ATFCSM1"};
+
+// Electric/petrol mode is latched at the start of each round so a mode change
+// from the web UI can't make s_pollStep index past the end of the other table.
+static bool s_roundElectric = true;
 
 static int hex_nibble(char c)
 {
@@ -243,7 +259,7 @@ static bool pid_bytes(const char *payload, const char *pid, uint8_t *out, uint8_
 static void parse_speed(const char *p)
 {
     uint8_t b[1];
-    if (storage_get_electric_mode())
+    if (s_roundElectric)
         s_data.speedKph = did_bytes(p, "22F40D", b, 1) ? b[0] : NAN;
     else
         s_data.speedKph = pid_bytes(p, "0D", b, 1) ? b[0] : NAN;
@@ -296,19 +312,31 @@ static void parse_odometer(const char *p)
 static void parse_soc(const char *p)
 {
     uint8_t b[2];
-    s_data.socPct = did_bytes(p, "224801", b, 2) ? ((b[0] << 8) | b[1]) / 500.0f : NAN;
+    if (!did_bytes(p, "224801", b, 2))
+    {
+        s_data.socPct = NAN;
+        return;
+    }
+    // Raw value is gross BMS SoC (0.002 %/bit). The dashboard figure is net
+    // of a ~3 % bottom / ~3 % top buffer: net = (gross - 3) / 94 * 100.
+    float gross = ((b[0] << 8) | b[1]) * 0.002f;
+    float net = (gross - 3.0f) / 94.0f * 100.0f;
+    s_data.socPct = constrain(net, 0.0f, 100.0f);
 }
 
 static void parse_hv_current(const char *p)
 {
     uint8_t b[2];
-    s_data.hvCurrentA = did_bytes(p, "224802", b, 2) ? (int16_t)((b[0] << 8) | b[1]) / 10.0f : NAN;
+    // Community formula: 0.1 * (raw - 16384). Sign convention still unverified.
+    s_data.hvCurrentA = did_bytes(p, "224802", b, 2)
+                            ? 0.1f * ((float)((b[0] << 8) | b[1]) - 16384.0f)
+                            : NAN;
 }
 
 static void parse_hv_voltage(const char *p)
 {
     uint8_t b[2];
-    s_data.hvVoltage = did_bytes(p, "224803", b, 2) ? (float)((b[0] << 8) | b[1]) : NAN;
+    s_data.hvVoltage = did_bytes(p, "224803", b, 2) ? ((b[0] << 8) | b[1]) * 0.01f : NAN;
 }
 
 static void parse_hv_temp(const char *p)
@@ -339,26 +367,128 @@ static void volvo_setup()
         int8_t st = myELM327.sendCommand_Blocking(cmd);
         Serial.printf("[OBD] %s -> %s (state=%d)\n", cmd, myELM327.payload, (int)st);
     }
+}
 
-    // One-shot DID sweep with headers on: log every reply that isn't NO DATA
-    myELM327.sendCommand_Blocking("ATH1");
-    myELM327.sendCommand_Blocking("ATAR");
-    myELM327.sendCommand_Blocking("ATSH7E0");
-    static const uint16_t RANGES[][2] = {{0x4800, 0x48FF}, {0x4900, 0x49FF}, {0xDD00, 0xDDFF}, {0xF400, 0xF4FF}};
-    for (const auto &r : RANGES)
+// ============================================================================
+//  On-demand DID sweep (non-blocking)
+//
+//  Probes ranges of UDS DIDs on chosen ECUs with the correct 29-bit addressing
+//  and logs every positive reply ("[SWEEP] ...") to the serial monitor. Runs one
+//  request per loop() pass so Wi-Fi, the web UI and the display keep working.
+//  Normal polling is paused while it runs and resumes when it finishes.
+// ============================================================================
+struct SweepRange
+{
+    uint8_t ecu;   // target byte in 1DD016<ecu>
+    uint16_t from; // first DID
+    uint16_t to;   // last DID (inclusive)
+};
+
+static const SweepRange SWEEP_RANGES[] = {
+    {0x37, 0xF400, 0xF4FF}, // VCU: F40D speed on Polestar 2
+    {0x37, 0xDD00, 0xDD0F}, // VCU: DD01 odometer
+    {0x37, 0x4A00, 0x4AFF}, // VCU: 4A0E motor speed on Polestar 2
+    {0x01, 0x2B00, 0x2B0F}, // 2B06-2B09 wheel speeds on Polestar 2
+    {0x31, 0x2B00, 0x2B0F}, // 2B06-2B09 wheel speeds (alternate module)
+};
+
+static bool s_sweepRequested = false;
+static bool s_sweepActive = false;
+static bool s_swCmdSent = false;
+static bool s_swIsDid = false;
+static uint32_t s_swStep = 0;
+static uint16_t s_swPositive = 0;
+static uint16_t s_swNegative = 0;
+static char s_swCmd[24];
+
+// Maps a linear step number onto the sweep's command list:
+//   ATH1, then per range: ATSH, ATFCSH, ATCRA, DIDs..., then ATH0.
+static bool sweep_cmd_for_step(uint32_t step, char *buf, size_t n, bool &isDid)
+{
+    isDid = false;
+    if (step == 0)
     {
-        for (uint32_t did = r[0]; did <= r[1]; did++)
+        snprintf(buf, n, "ATH1");
+        return true;
+    }
+    step--;
+    for (const auto &r : SWEEP_RANGES)
+    {
+        uint32_t len = 3 + (uint32_t)(r.to - r.from) + 1;
+        if (step < len)
         {
-            char cmd[8];
-            snprintf(cmd, sizeof(cmd), "22%04X", (unsigned)did);
-            int8_t st = myELM327.sendCommand_Blocking(cmd);
-            if (st != ELM_NO_DATA)
-                Serial.printf("[SWEEP] %s -> '%s' (state=%d)\n", cmd, myELM327.payload, (int)st);
-            delay(1);
+            if (step == 0)
+                snprintf(buf, n, "ATSHD016%02X", r.ecu);
+            else if (step == 1)
+                snprintf(buf, n, "ATFCSH1DD016%02X", r.ecu);
+            else if (step == 2)
+                snprintf(buf, n, "ATCRA1EC%02XE80", (uint8_t)(r.ecu * 2));
+            else
+            {
+                snprintf(buf, n, "22%04X", (unsigned)(r.from + step - 3));
+                isDid = true;
+            }
+            return true;
+        }
+        step -= len;
+    }
+    if (step == 0)
+    {
+        snprintf(buf, n, "ATH0");
+        return true;
+    }
+    return false;
+}
+
+static void do_sweep_step()
+{
+    if (!s_swCmdSent)
+    {
+        if (!sweep_cmd_for_step(s_swStep, s_swCmd, sizeof(s_swCmd), s_swIsDid))
+        {
+            Serial.printf("[SWEEP] done - %u positive, %u negative replies\n",
+                          s_swPositive, s_swNegative);
+            s_sweepActive = false;
+            s_pollStep = 0; // next round re-sends the poll headers
+            return;
+        }
+        s_lastCommand = s_swCmd;
+        myELM327.sendCommand(s_swCmd);
+        s_swCmdSent = true;
+        return;
+    }
+
+    int8_t st;
+    do
+    {
+        st = myELM327.get_response();
+    } while (st == ELM_GETTING_MSG && SerialBT.available());
+    if (st == ELM_GETTING_MSG)
+        return;
+
+    if (s_swIsDid)
+    {
+        // Match "62<DID>" rather than "62": with headers on, IDs such as
+        // 1EC62E80 contain "62" themselves.
+        char expect[8];
+        snprintf(expect, sizeof(expect), "62%s", s_swCmd + 2);
+        if (st == ELM_SUCCESS && strstr(myELM327.payload, expect))
+        {
+            s_swPositive++;
+            Serial.printf("[SWEEP] %s -> '%s'\n", s_swCmd, myELM327.payload);
+        }
+        else if (st == ELM_SUCCESS && strstr(myELM327.payload, "7F22"))
+        {
+            s_swNegative++; // ECU is alive but rejected this DID
         }
     }
-    Serial.println("[SWEEP] done");
-    myELM327.sendCommand_Blocking("ATH0");
+    else if (st != ELM_SUCCESS)
+    {
+        Serial.printf("[SWEEP] %s -> '%s' (state=%d)\n", s_swCmd, myELM327.payload, (int)st);
+    }
+
+    s_swStep++;
+    s_swCmdSent = false;
 }
 
 static void do_poll_step()
@@ -366,7 +496,7 @@ static void do_poll_step()
     if (!s_pollRunning)
         return;
 
-    const bool electric = storage_get_electric_mode();
+    const bool electric = s_roundElectric;
     const PollItem &item = electric ? POLL_SEQUENCE[s_pollStep] : PETROL_POLL_SEQUENCE[s_pollStep];
     const uint8_t pollCount = electric ? EV_POLL_COUNT : PETROL_POLL_COUNT;
 
@@ -387,6 +517,11 @@ static void do_poll_step()
 
     if (st == ELM_GETTING_MSG)
         return; // still waiting
+
+    if (!item.parse && st != ELM_SUCCESS)
+    {
+        Serial.printf("[OBD] %s -> '%s' (state=%d)\n", item.cmd, myELM327.payload, (int)st);
+    }
 
     if (item.parse)
     {
@@ -537,10 +672,10 @@ void bt_obd_loop()
     // -----------------------------------------------------------------
     case BT_OBD_INIT:
     {
-        // Protocol '7' = ISO 15765-4 CAN, 29-bit ID, 500 kbaud. Selecting it
-        // explicitly skips the auto-search, which needs a Mode 01 reply the
-        // EX30 may not give.
-        const char protocol = '6';
+        // EV (EX30): protocol '7' = ISO 15765-4 CAN, 29-bit ID, 500 kbaud.
+        // Petrol: protocol '6' = 11-bit ID, 500 kbaud. Selecting it explicitly
+        // skips the auto-search, which needs a Mode 01 reply the EX30 may not give.
+        const char protocol = storage_get_electric_mode() ? '7' : '6';
         if (myELM327.begin(SerialBT, false, OBD_TIMEOUT_MS, protocol))
         {
             Serial.println("[OBD] ELM327 handshake OK");
@@ -576,10 +711,30 @@ void bt_obd_loop()
             return;
         }
 
+        if (s_sweepActive)
+        {
+            do_sweep_step();
+            return;
+        }
+        if (s_sweepRequested && !s_pollRunning)
+        {
+            // Start between rounds so a half-finished poll round isn't cut off
+            s_sweepRequested = false;
+            s_sweepActive = true;
+            s_swStep = 0;
+            s_swCmdSent = false;
+            s_swPositive = 0;
+            s_swNegative = 0;
+            Serial.println("[SWEEP] starting");
+            return;
+        }
+
         unsigned long now = millis();
         if (!s_pollRunning && now - s_lastPollMs >= OBD_POLL_INTERVAL_MS)
         {
             s_lastPollMs = now;
+            s_roundElectric = storage_get_electric_mode();
+            s_pollStep = 0;
             s_pollRunning = true; // start a fresh round
         }
         do_poll_step();
@@ -619,7 +774,9 @@ OBDDiagnostics bt_obd_get_diagnostics()
     case BT_IDLE: diagnostics.state = "Waiting to connect"; break;
     case BT_CONNECTING: diagnostics.state = "Connecting to adapter"; break;
     case BT_OBD_INIT: diagnostics.state = "Initializing ELM327"; break;
-    case BT_POLLING: diagnostics.state = "Polling OBD-II"; break;
+    case BT_POLLING:
+        diagnostics.state = s_sweepActive ? "DID sweep in progress" : "Polling OBD-II";
+        break;
     case BT_SCANNING: diagnostics.state = "Bluetooth scan in progress"; break;
     }
     diagnostics.lastCommand = s_lastCommand;
@@ -713,5 +870,21 @@ void bt_obd_force_reconnect()
     s_pollRunning = false;
     s_cmdSent = false;
     s_pollStep = 0;
+    s_sweepActive = false;
+    s_sweepRequested = false;
+    s_swCmdSent = false;
     s_lastAttemptMs = 0;
+}
+
+bool bt_obd_start_sweep()
+{
+    if (s_state != BT_POLLING || !storage_get_electric_mode() || s_sweepActive)
+        return false;
+    s_sweepRequested = true;
+    return true;
+}
+
+bool bt_obd_sweep_running()
+{
+    return s_sweepActive || s_sweepRequested;
 }

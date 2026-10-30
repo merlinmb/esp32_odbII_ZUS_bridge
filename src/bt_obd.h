@@ -83,3 +83,10 @@ String bt_get_target_mac();
 
 // Force a disconnect so the next loop() iteration attempts to reconnect.
 void bt_obd_force_reconnect();
+
+// Queue a non-blocking UDS DID sweep (EV mode, while polling). Results are
+// logged to the serial monitor as "[SWEEP] ...". Returns false if not possible.
+bool bt_obd_start_sweep();
+
+// True while a sweep is queued or running.
+bool bt_obd_sweep_running();
